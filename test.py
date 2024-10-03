@@ -419,7 +419,7 @@ def lambda_handler(event, context):
                     htmldata = InsertArticleData(device,htmldata,result[0],"open","photopage",int(photo) if photo else 0)
                     
                     htmldata = htmldata.replace('{%hebirote%}', CreateHebiroteHtml())
-                ################################################################
+                    ################################################################
 
             else:
                 redirect_path = f"/article/{news_item_id}/photopage/001.html"
@@ -433,15 +433,14 @@ def lambda_handler(event, context):
 
             
     elif '/preview/article/' in event['path'] and '/photopage' in event['path'] :#2023-03-13 追加　写真専用ページ新設対応 #######################################################
+        sts='"preview" or sts="wait" '
         news_item_id= patharry[3]
         photo = patharry[5].replace(".html","")
         print("処理8　photopageページプレビュー"+news_item_id)
 
-        sql =f'select * from {CONF.contents_tbl} left join contents_genre_tbl on {CONF.contents_tbl}.news_item_id = contents_genre_tbl.news_item_id where  baitai_id like "in.%"  and {CONF.contents_tbl}.news_item_id ="{news_item_id}"'
-        print(f"SQL=={sql}")
+        sql =f'select * from {CONF.contents_tbl} left join contents_genre_tbl on {CONF.contents_tbl}.news_item_id = contents_genre_tbl.news_item_id where sts={sts} and baitai_id like "in.%" and {CONF.contents_tbl}.news_item_id ="{news_item_id}"'
         result = GetDBdata('mantanweb',sql)
         if result:
-            print(f"news_item_id=={result[0]['news_item_id']}")
             htmldata = s3.Object(CONF.template_bucket, TEMPLATE_PATH + CONFIG_JSON['Templates']['photo_only_page_html'][device]).get()['Body'].read().decode('utf-8')
             htmldata = InsertPhotolistData(device,htmldata,result[0],photo,"open")#写真描画処理
             htmldata = InsertArticleData(device,htmldata,result[0],"open","photopage",int(photo) if photo else 0)
@@ -618,7 +617,7 @@ def GetMainKensakuword(info_json):
 
 
     return(matome_name)
-
+    
 # 記事種別取得
 def GetArticleKind(info_json):
     kind = ""
@@ -734,9 +733,9 @@ def CreateArchiveHtml(htmldata,articledata,genre,targetdate,device):
             if GetMainKensakuword(info_json) =="台紙" or listdata['sns_only'] == 1:
                 #print("台紙なので除外")
                 continue
+            
             kind = GetArticleKind(info_json)
             page_data['記事種別'] = '' if kind == '' else f'<span>{kind}</span> '
-
             
             if len(info_json['text'][0]) >90:
                 page_data['本文…'] =EscapeStr(info_json['text'][0][:90]+"...")
@@ -864,7 +863,6 @@ def InsertPhotolistData(device,htmldata,article_data,photo,OpenorPrev):
     image_info = info_json.get('image_info')
 
     news_item_id = article_data['news_item_id']
-    print(f"news_item_id={news_item_id}")
     article_date_disp = article_data['first_open_datetime'].strftime('%Y年%m月%d日 %H:%M')
     article_date_datetime = str(article_data['first_open_datetime'])
     article_update_datetime = str(article_data['updatestamp'])
@@ -975,7 +973,6 @@ def InsertPhotolistData(device,htmldata,article_data,photo,OpenorPrev):
     
 #記事詳細ページ用.    写真と前後記事リンク付与  （画像と前後記事リスト）  
 def InsertPhotoAndPreNextData(device,htmldata,article_data,OpenorPreview):
-    print("InsertPhotoAndPreNextData スタート")
     if article_data['info_json']:
         print("info_jso あり。記事詳細ページ用写真と前後記事リンク付与  （画像と前後記事リスト）")
     
@@ -1227,8 +1224,6 @@ def InsertPhotoAndPreNextData(device,htmldata,article_data,OpenorPreview):
         
     #プレミアムバンダイTag付与
     htmldata=BandaiTage(htmldata,keywords)
-
-    print("InsertPhotoAndPreNextData エンド")
 
     
     return htmldata
@@ -1647,6 +1642,7 @@ def InsertArticleData(device,htmldata,article_data,OpenorPreview,photopage_flg,p
     if info_json.get('flexible_info'):
         for f_i_data in  info_json['flexible_info']:
             if f_i_data.get('use_name') =="動画タグ" or f_i_data.get('number') =="2" :#number ="2" 関連動画
+                print(f"動画タグf_i_data.get('use_name')={f_i_data.get('use_name')}　　{f_i_data.get('number')}")
 
                 if len(f_i_data['value']) == 11:
                     youtube_id = f_i_data['value'] 
@@ -1681,33 +1677,14 @@ def InsertArticleData(device,htmldata,article_data,OpenorPreview,photopage_flg,p
                     bread_crumb_list += bread_crumb_list_first + f'<a href="/matome/{urllib.parse.quote(matome_name)}/{urllib.parse.quote(kind)}" itemprop="item"><span itemprop="name">{kind}</span></a><meta itemprop="position" content="4"></li>'
                     crumb_num =4
                     
-            # if 'sns_embed_data' in f_i_data.get('use_name'):#number ="13"
-            #     #SNS埋め込みデータ#####################
-            #     sns_embed_data_html = CreateSNSembedDataHTML(f_i_data)
-                
             if 'sns_embed_data' in f_i_data.get('use_name'):#number ="13"
                 #SNS埋め込みデータ#####################
-                value = f_i_data.get('value')
-                print("--------iajdkljflkasjdfkjakdlj", value)
-                
-                # 2023-09-27 複数あるSNSの間に広告を挿入するための処理
-                for index, snsdata in enumerate(value):
-                    page_data['sns埋め込みデータ'+str(index+1)] = CreateSNSembedDataHTML(snsdata)
-                    
-                # origin_templateでsns埋め込みデータ1 ~ 5まで用意しているため、sns埋め込みデータの数が5以下の場合空白を挿入
-                if len(value) < 5: #Bcuteyのsns埋め込み入力枠が5個までなので、5以下に
-                    for i in range(len(value),5):
-                        page_data['sns埋め込みデータ'+str(i+1)] = ""
-            else:
-                for i in range(5):
-                    page_data['sns埋め込みデータ'+str(i+1)] = ""
-    else:
-        for i in range(5):
-            page_data['sns埋め込みデータ'+str(i+1)] = ""    
+                sns_embed_data_html = CreateSNSembedDataHTML(f_i_data)
+        
     
     bread_crumb_list = bread_crumb_list.replace("{%まとめ名quote%}",urllib.parse.quote(matome_name))
     bread_crumb_list = bread_crumb_list.replace("{%まとめ名%}",matome_name)
-    page_data['sns埋め込みデータ'] = ''
+    page_data['sns埋め込みデータ'] = sns_embed_data_html
 
     #ジャンル名差込###################################
     if main_genre =="特撮" or main_genre =="ドラマ":#特撮、ドラマは、/matomeをつける2023-02-07
@@ -1782,25 +1759,33 @@ def InsertArticleData(device,htmldata,article_data,OpenorPreview,photopage_flg,p
     return htmldata
 
 #SNS埋め込み用HTML作成
-def CreateSNSembedDataHTML(data):
-    sns_code_json ={
-        "Youtube":"<div class='Youtube flex-center'><a href='https://m.youtube.com/watch?v={%sns_id%}&amp;feature=youtu.be' target='_blank'><img src='https://i.ytimg.com/vi/{%sns_id%}/hqdefault.jpg'></a></div>",
-        "twitter":"<div class='Twitter flex-center'><blockquote class='twitter-tweet'><a href='{%sns_url%}' target='_blank'></a></blockquote><script  src='https://platform.twitter.com/widgets.js' charset='utf-8'></script></div>",
-        "instagram": "<div class='instagram flex-center'><blockquote class='instagram-media' data-instgrm-permalink='{%sns_url%}' data-instgrm-version='14'><a href='{%sns_url%}' target='_blank'></a></blockquote><script async src='https://www.instagram.com/embed.js'></script></div>",
-        "Tiktok" :"<div class='Tiktok flex-center'><blockquote class='tiktok-embed' data-video-id='{%sns_id%}'><a href='https://www.tiktok.com/tiktok/video/{%sns_id%}' target='_blank'></a></blockquote><script async src='https://www.tiktok.com/embed.js'></script></div>"
-    }
+def CreateSNSembedDataHTML(f_i_data):
+    sns_code_json ={"Youtube":"<div class='Youtube flex-center'><a href='https://m.youtube.com/watch?v={%sns_id%}&amp;feature=youtu.be' target='_blank'><img src='https://i.ytimg.com/vi/{%sns_id%}/hqdefault.jpg'></a></div>",
+    "twitter":"<div class='Twitter flex-center'><blockquote class='twitter-tweet'><a href='{%sns_url%}' target='_blank'></a></blockquote><script  src='https://platform.twitter.com/widgets.js' charset='utf-8'></script></div>",
+    "instagram_bak":"<div class='instagram flex-center'><blockquote class='instagram-media'><a href='{%sns_url%}' target='_blank'></a></blockquote><script async src='https://www.instagram.com/embed.js'></script></div>",
+    "instagram": """ <div class='instagram flex-center'>
+                        <blockquote class='instagram-media'
+                        data-instgrm-permalink='{%sns_url%}'
+                        data-instgrm-version='14'
+                        >
+                        <a href='{%sns_url%}' target='_blank'></a>
+                        </blockquote>
+                        <script async src='https://www.instagram.com/embed.js'></script>
+                        </div>""",
+    "Tiktok" :"<div class='Tiktok flex-center'><blockquote class='tiktok-embed' data-video-id='{%sns_id%}'><a href='https://www.tiktok.com/tiktok/video/{%sns_id%}' target='_blank'></a></blockquote><script async src='https://www.tiktok.com/embed.js'></script></div>"}
     
-    # value = f_i_data.get('value')
+    
+    value = f_i_data.get('value')
     html =""
-    # for data in value:
-    if data.get("sns_embed_url"):
-        if "instagram" in data.get("sns_embed_url"):
-            sns_name ="instagram"
-        elif "twitter" in data.get("sns_embed_url"):
-            sns_name ="twitter"
-        else:
-            return ""
-        html += sns_code_json[sns_name].replace('{%sns_url%}',data.get("sns_embed_url"))
+    for data in value:
+        if data.get("sns_embed_url"):
+            if "instagram" in data.get("sns_embed_url"):
+                sns_name ="instagram"
+            elif "twitter" in data.get("sns_embed_url"):
+                sns_name ="twitter"
+            else:
+                continue
+            html += sns_code_json[sns_name].replace('{%sns_url%}',data.get("sns_embed_url"))
             
             
     return(html)
@@ -2315,7 +2300,6 @@ def PartsAssemble(htmldata,device):
 def CreateHebiroteHtml():
     hebirote_html_parts = TEMP.hebirote_html_parts
     data = s3.Object(CONF.parts_bucket, 'storage/items/hebirote.json').get()['Body'].read().decode('utf-8')
-    print("hebirote", data)
     
     jsonData = json.loads(data)
     
@@ -2341,7 +2325,6 @@ def CreateHebiroteHtml():
     hebirote_html_parts = hebirote_html_parts.replace('{%hebirote_title%}', result['title'])
     hebirote_html_parts = hebirote_html_parts.replace('{%hebirote_img_url%}', result['photoUrl'])
     hebirote_html_parts = hebirote_html_parts.replace('{%hebirote_link_url%}', update_query(result['linkUrl'], 'ext_m', 'h'))
-    print("hebirote end")
     return hebirote_html_parts
     
 # GETパラメータを変更＆追加してくれる関数
@@ -2350,6 +2333,7 @@ def update_query(url, key, new_val):
     d = urllib.parse.parse_qs(pr.query)
     d[key] = new_val
     return urllib.parse.urlunparse(pr._replace(query=urllib.parse.urlencode(d, doseq=True)))
+
 
 
 
